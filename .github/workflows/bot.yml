@@ -1,0 +1,83 @@
+name: Tracker bot
+
+# One workflow does everything: read new messages, update data/, send replies and reports.
+# In fast mode the Cloudflare relay starts it seconds after you send a message;
+# the schedules below are the backup and the report times.
+on:
+  workflow_dispatch:
+    inputs:
+      reason:
+        description: "Why this run started (the relay sets 'telegram')"
+        required: false
+        default: manual
+      force_reports:
+        description: "Send the habit nudge and weekly recap now (for testing)"
+        type: boolean
+        default: false
+  schedule:
+    - cron: "7 */2 * * *"   # backup sweep every 2 hours
+    - cron: "32 15 * * *"   # 21:02 IST daily habit nudge
+    - cron: "32 14 * * 0"   # 20:02 IST Sunday weekly recap
+
+env:
+  LC_ALL: C.UTF-8
+  BOT_TZ: Asia/Kolkata
+  NUDGE_HOUR: "21"
+  WEEKLY_DAY: "7"           # ISO weekday: 1 = Monday ... 7 = Sunday
+  WEEKLY_HOUR: "20"
+  RELAY_URL: ${{ vars.RELAY_URL }}
+
+permissions:
+  contents: write
+
+# One run at a time so data commits never collide. Extra queued runs collapse into
+# one, which is fine: every run handles everything that is waiting.
+concurrency:
+  group: tracker-data
+  cancel-in-progress: false
+
+jobs:
+  bot:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Anything to do?
+        id: check
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          RELAY_SECRET: ${{ secrets.RELAY_SECRET }}
+          FORCE_REPORTS: ${{ inputs.force_reports }}
+        run: bash scripts/precheck.sh
+
+      - uses: r-lib/actions/setup-r@v2
+        if: steps.check.outputs.work == 'true'
+        with:
+          use-public-rspm: true
+
+      - uses: r-lib/actions/setup-r-dependencies@v2
+        if: steps.check.outputs.work == 'true'
+
+      - name: Read messages and update data
+        if: steps.check.outputs.work == 'true'
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          RELAY_SECRET: ${{ secrets.RELAY_SECRET }}
+          FORCE_REPORTS: ${{ inputs.force_reports }}
+          OUTBOX_DIR: ${{ runner.temp }}/outbox
+        run: Rscript R/run.R process
+
+      - name: Save data to the repo
+        if: steps.check.outputs.work == 'true'
+        run: bash scripts/save_data.sh
+
+      - name: Send replies
+        if: steps.check.outputs.work == 'true'
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          RELAY_SECRET: ${{ secrets.RELAY_SECRET }}
+          OUTBOX_DIR: ${{ runner.temp }}/outbox
+        run: Rscript R/run.R deliver
