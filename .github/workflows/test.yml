@@ -1,0 +1,48 @@
+name: Tests
+
+# Runs when code changes (not on the bot's own data commits). No secrets needed.
+on:
+  push:
+    paths:
+      - "R/**"
+      - "tests/**"
+      - "worker/**"
+      - "scripts/**"
+      - "DESCRIPTION"
+      - ".github/workflows/**"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  r:
+    name: R bot
+    runs-on: ubuntu-latest
+    env:
+      LC_ALL: C.UTF-8
+    steps:
+      - uses: actions/checkout@v4
+      - uses: r-lib/actions/setup-r@v2
+        with:
+          use-public-rspm: true
+      - uses: r-lib/actions/setup-r-dependencies@v2
+      - run: Rscript tests/test_bot.R
+
+  relay:
+    name: Cloudflare relay
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - run: node --test test/relay.test.js
+        working-directory: worker
+
+  scripts:
+    name: Shell scripts
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: shellcheck scripts/*.sh
