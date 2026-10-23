@@ -1,0 +1,8 @@
+{
+  "name": "telegram-tracker-relay",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node --test test/relay.test.js"
+  }
+}

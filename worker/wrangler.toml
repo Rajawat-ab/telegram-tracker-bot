@@ -1,0 +1,22 @@
+# Cloudflare Worker that receives Telegram messages instantly and starts the GitHub job.
+# Deployed by .github/workflows/deploy-relay.yml, which also passes GITHUB_REPO and
+# GITHUB_BRANCH and uploads the secrets (TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID,
+# RELAY_SECRET, GH_DISPATCH_TOKEN).
+name = "telegram-tracker-relay"
+main = "src/index.js"
+compatibility_date = "2025-06-01"
+workers_dev = true
+
+[vars]
+WORKFLOW_FILE = "bot.yml"
+
+[[durable_objects.bindings]]
+name = "INBOX"
+class_name = "Inbox"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["Inbox"]
+
+[observability]
+enabled = true
