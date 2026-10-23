@@ -1,0 +1,117 @@
+name: Deploy relay (Cloudflare)
+
+# Run by hand from the Actions tab. Deploys worker/ to your Cloudflare account,
+# uploads its secrets and points your Telegram bot at it. Safe to run again any time.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: relay-deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check the secrets are in place
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          RELAY_SECRET: ${{ secrets.RELAY_SECRET }}
+          GH_DISPATCH_TOKEN: ${{ secrets.GH_DISPATCH_TOKEN }}
+        run: |
+          missing=""
+          for name in CLOUDFLARE_API_TOKEN CLOUDFLARE_ACCOUNT_ID TELEGRAM_BOT_TOKEN TELEGRAM_CHAT_ID RELAY_SECRET GH_DISPATCH_TOKEN; do
+            [ -n "${!name}" ] || missing="$missing $name"
+          done
+          if [ -n "$missing" ]; then
+            echo "::error::Missing repository secrets:$missing"
+            exit 1
+          fi
+          if ! [[ "$RELAY_SECRET" =~ ^[A-Za-z0-9_-]{32,256}$ ]]; then
+            echo "::error::RELAY_SECRET must be at least 32 characters, using only letters, digits, _ or -"
+            exit 1
+          fi
+
+      - name: Deploy the worker
+        id: deploy
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          wranglerVersion: "4.20.0"
+          workingDirectory: worker
+          command: deploy --var GITHUB_REPO:${{ github.repository }} --var GITHUB_BRANCH:${{ github.event.repository.default_branch }}
+
+      - name: Upload the worker's secrets
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          wranglerVersion: "4.20.0"
+          workingDirectory: worker
+          command: secret list
+          secrets: |
+            TELEGRAM_BOT_TOKEN
+            TELEGRAM_CHAT_ID
+            RELAY_SECRET
+            GH_DISPATCH_TOKEN
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          RELAY_SECRET: ${{ secrets.RELAY_SECRET }}
+          GH_DISPATCH_TOKEN: ${{ secrets.GH_DISPATCH_TOKEN }}
+
+      - name: Connect Telegram to the relay
+        env:
+          DEPLOY_URL: ${{ steps.deploy.outputs.deployment-url }}
+          DEPLOY_OUTPUT: ${{ steps.deploy.outputs.command-output }}
+          RELAY_SECRET: ${{ secrets.RELAY_SECRET }}
+          CURRENT_RELAY_URL: ${{ vars.RELAY_URL }}
+        run: |
+          URL="${DEPLOY_URL:-}"
+          if [ -z "$URL" ]; then
+            URL=$(echo "$DEPLOY_OUTPUT" | grep -oE 'https://[A-Za-z0-9.-]+\.workers\.dev' | head -n1 || true)
+          fi
+          if [ -z "$URL" ]; then
+            echo "::error::Could not find the relay URL in the deploy output. Open Cloudflare > Workers & Pages to see it."
+            exit 1
+          fi
+          URL="${URL%/}"
+          sleep 5
+          echo "Registering the Telegram webhook..."
+          curl -sS --fail-with-body --retry 3 --retry-delay 5 --max-time 30 -X POST \
+            -H "Authorization: Bearer $RELAY_SECRET" "$URL/admin/register"
+          echo
+          # Only start a test run once the bot knows the relay URL; before that it would
+          # still try to poll Telegram, which refuses while the webhook is on.
+          if [ "${CURRENT_RELAY_URL%/}" = "$URL" ]; then
+            echo "Checking that the relay can start the bot workflow..."
+            curl -sS --fail-with-body --max-time 30 -X POST \
+              -H "Authorization: Bearer $RELAY_SECRET" "$URL/admin/test-dispatch" \
+              || echo "::warning::The relay could not start the 'Tracker bot' workflow. Check the GH_DISPATCH_TOKEN secret (it needs Actions: Read and write on this repo)."
+            echo
+          fi
+          {
+            echo "### Relay deployed"
+            echo ""
+            echo "Relay URL: \`$URL\`"
+            echo ""
+            if [ "${CURRENT_RELAY_URL%/}" = "$URL" ]; then
+              echo "The \`RELAY_URL\` variable already matches. Fast mode is on."
+            else
+              echo "**One more step:** Settings > Secrets and variables > Actions > **Variables** tab > New repository variable"
+              echo "named \`RELAY_URL\` with the URL above. Until then the bot cannot read messages."
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+          if [ "${CURRENT_RELAY_URL%/}" != "$URL" ]; then
+            echo "::warning::Now add the repository variable RELAY_URL = $URL (see the run summary)."
+          fi
