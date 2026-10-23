@@ -1,0 +1,8 @@
+.Renviron
+.Rhistory
+.RData
+.Rproj.user/
+*.png
+node_modules/
+.wrangler/
+.dev.vars

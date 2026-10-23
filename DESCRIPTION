@@ -1,0 +1,13 @@
+Package: telegramtracker
+Title: Telegram Expense and Habit Tracker
+Version: 0.1.0
+Description: A Telegram bot written in R that logs expenses and habits to CSV files
+    and runs for free on GitHub Actions. This file only lists dependencies so the
+    workflows can install and cache them.
+License: MIT
+Encoding: UTF-8
+Imports:
+    httr2,
+    jsonlite,
+    curl,
+    ggplot2

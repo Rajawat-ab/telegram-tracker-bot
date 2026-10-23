@@ -1,0 +1,2 @@
+# Keep Unix line endings so the bash scripts run on GitHub's Linux machines.
+* text=auto eol=lf
