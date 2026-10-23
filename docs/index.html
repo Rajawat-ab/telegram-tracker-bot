@@ -1,0 +1,647 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<style>body{margin:0}img{max-width:100%}[hidden]{display:none!important}</style>
+<title>Telegram Tracker Flow</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,700&family=IBM+Plex+Mono:wght@400;500&family=Source+Sans+3:wght@400;600&display=swap">
+<style>
+  /* Layout: one reading column of prose, with full-width figures that scroll sideways on phones. */
+  :root {
+    --bg: #f3f5f2;
+    --surface: #ffffff;
+    --fg: #1c2427;
+    --muted: #5b676b;
+    --line: #c7cfcb;
+    --fast: #1f6fb2;
+    --backup: #a8640a;
+    --ok: #2c7a4d;
+    --bad: #b03a31;
+    --font-display: "Bricolage Grotesque", "Segoe UI", system-ui, sans-serif;
+    --font-body: "Source Sans 3", "Segoe UI", system-ui, sans-serif;
+    --font-mono: "IBM Plex Mono", ui-monospace, Consolas, monospace;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #111517; --surface: #192023; --fg: #e4e9e7; --muted: #99a4a7; --line: #354140;
+      --fast: #6db0ea; --backup: #e0a145; --ok: #63c18b; --bad: #e57d73; color-scheme: dark;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #111517; --surface: #192023; --fg: #e4e9e7; --muted: #99a4a7; --line: #354140;
+    --fast: #6db0ea; --backup: #e0a145; --ok: #63c18b; --bad: #e57d73; color-scheme: dark;
+  }
+
+  body {
+    background: var(--bg);
+    color: var(--fg);
+    font: 17px/1.6 var(--font-body);
+  }
+  .page {
+    max-width: 1140px;
+    margin: 0 auto;
+    padding-block: 40px 72px;
+    padding-left: max(16px, env(safe-area-inset-left, 0px));
+    padding-right: max(16px, env(safe-area-inset-right, 0px));
+    display: grid;
+    gap: 56px;
+  }
+  .prose { max-width: 68ch; }
+  h1, h2 { font-family: var(--font-display); text-wrap: balance; line-height: 1.15; margin: 0; }
+  h1 { font-size: clamp(2rem, 5vw, 3rem); letter-spacing: -0.01em; }
+  h2 { font-size: 1.55rem; }
+  p { margin: 0; }
+  header { display: grid; gap: 14px; }
+  .lede { font-size: 1.15rem; color: var(--muted); max-width: 62ch; }
+  .stack { display: flex; flex-wrap: wrap; gap: 8px; }
+  .chip {
+    font: 500 12px/1 var(--font-mono);
+    letter-spacing: 0.04em;
+    padding: 7px 10px;
+    border: 1px solid var(--line);
+    border-radius: 999px;
+    color: var(--muted);
+  }
+  section { display: grid; gap: 16px; }
+  .eyebrow { font: 500 12px/1 var(--font-mono); letter-spacing: 0.12em; text-transform: uppercase; color: var(--muted); }
+
+  figure { margin: 0; display: grid; gap: 10px; }
+  .scroll { overflow-x: auto; background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 12px; }
+  figcaption { font-size: 0.95rem; color: var(--muted); max-width: 80ch; }
+
+  .legend { display: flex; flex-wrap: wrap; gap: 18px; font: 12px var(--font-mono); color: var(--muted); }
+  .legend span { display: inline-flex; align-items: center; gap: 8px; }
+  .legend i { display: inline-block; width: 26px; height: 0; border-top: 2px solid currentColor; }
+  .legend .k-fast { color: var(--fast); }
+  .legend .k-backup { color: var(--backup); }
+  .legend .k-plain { color: var(--fg); }
+  .legend .k-dash i { border-top-style: dashed; }
+
+  /* SVG diagrams: colours come from page tokens so both themes read. */
+  svg.dg { display: block; width: 100%; min-width: 900px; height: auto; color: var(--fg); }
+  .dg .box { fill: var(--surface); stroke: var(--line); stroke-width: 1.3; }
+  .dg .box-key { fill: var(--surface); stroke: var(--fast); stroke-width: 1.6; }
+  .dg .frame { fill: none; stroke: var(--line); stroke-width: 1.3; stroke-dasharray: 6 5; }
+  .dg .ttl { font: 600 14px var(--font-body); fill: currentColor; }
+  .dg .sub { font: 11.5px var(--font-mono); fill: var(--muted); }
+  .dg .lbl { font: 11.5px var(--font-mono); fill: var(--muted); }
+  .dg .lbl-fast { font: 11.5px var(--font-mono); fill: var(--fast); }
+  .dg .lbl-backup { font: 11.5px var(--font-mono); fill: var(--backup); }
+  .dg .cap { font: 500 11px var(--font-mono); fill: var(--muted); letter-spacing: 0.08em; }
+  .dg .edge { stroke: currentColor; stroke-width: 1.4; fill: none; }
+  .dg .edge.fast { stroke: var(--fast); stroke-width: 1.8; }
+  .dg .edge.backup { stroke: var(--backup); stroke-width: 1.8; }
+  .dg .edge.dash { stroke-dasharray: 4 4; }
+  .dg .lane { stroke: var(--line); stroke-width: 1; }
+  .dg .dot { fill: var(--fast); }
+  .dg .mk { fill: currentColor; }
+  .dg .mk-fast { fill: var(--fast); }
+  .dg .mk-backup { fill: var(--backup); }
+  .dg .result { font: 600 13px var(--font-mono); fill: currentColor; }
+
+  table { border-collapse: collapse; width: 100%; min-width: 640px; font-size: 0.97rem; }
+  th, td { text-align: left; vertical-align: top; padding: 10px 14px; border-bottom: 1px solid var(--line); }
+  th { font: 500 12px var(--font-mono); letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); }
+  td code, p code, li code { font: 0.88em var(--font-mono); }
+  .tbl { overflow-x: auto; background: var(--surface); border: 1px solid var(--line); border-radius: 12px; }
+  .tbl tr:last-child td { border-bottom: 0; }
+  .ok { color: var(--ok); font-weight: 600; }
+
+  ol.steps { margin: 0; padding-left: 1.4em; display: grid; gap: 8px; max-width: 72ch; }
+  ol.steps li::marker { font-family: var(--font-mono); color: var(--muted); }
+
+  .facts { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; }
+  .fact { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 14px 16px; display: grid; gap: 4px; }
+  .fact b { font: 600 1.35rem var(--font-display); font-variant-numeric: tabular-nums; }
+  .fact span { color: var(--muted); font-size: 0.95rem; }
+
+  .parts { display: flex; flex-wrap: wrap; gap: 10px; }
+  .parts a {
+    display: grid; gap: 2px; min-width: 0; flex: 1 1 240px;
+    padding: 14px 16px; border: 1px solid var(--line); border-radius: 12px;
+    background: var(--surface); color: var(--fg); text-decoration: none;
+  }
+  .parts a:hover, .parts a:focus-visible { border-color: var(--fast); outline: none; }
+  .parts b { font: 600 1.05rem var(--font-display); }
+  .parts span { color: var(--muted); font-size: 0.95rem; }
+  .part-head { display: grid; gap: 8px; padding-top: 24px; border-top: 2px solid var(--fg); }
+  .part-head h2 { font-size: clamp(1.7rem, 4vw, 2.3rem); }
+  .dg .q { fill: var(--surface); stroke: var(--fast); stroke-width: 1.6; }
+  .dg .end { fill: var(--surface); stroke: currentColor; stroke-width: 1.6; }
+  .dg .say { font: italic 12px var(--font-body); fill: currentColor; }
+  .dg .bus { stroke: currentColor; stroke-width: 1.4; fill: none; }
+</style>
+</head>
+<body>
+<div class="page">
+  <header>
+    <span class="eyebrow">Architecture · live since 24 Oct 2026</span>
+    <h1>Telegram Tracker Flow</h1>
+    <p class="lede">A personal expense and habit bot. You text it like a friend, it writes to CSV files in a private GitHub repo and replies in about a minute. Everything runs on free tiers.</p>
+    <div class="stack">
+      <span class="chip">Telegram Bot API</span>
+      <span class="chip">Cloudflare Worker + Durable Object</span>
+      <span class="chip">GitHub Actions</span>
+      <span class="chip">R</span>
+      <span class="chip">Git as the database</span>
+    </div>
+    <nav class="parts" aria-label="Parts of this page">
+      <a href="#functional"><b>1 · Functional flow</b><span>What you send and what the bot does with it</span></a>
+      <a href="#architecture"><b>2 · Architecture</b><span>Which services move the message, and how failures recover</span></a>
+    </nav>
+  </header>
+
+  <!-- ================= PART 1: FUNCTIONAL ================= -->
+  <div class="part-head" id="functional">
+    <span class="eyebrow">Part 1 · Functional flow</span>
+    <h2>What the bot does with each message</h2>
+    <p class="prose">This view ignores servers entirely. It follows the rules the bot applies to your words, in the order it applies them.</p>
+  </div>
+
+  <section>
+    <span class="eyebrow">Every message you send</span>
+    <h2>From a chat message to a reply</h2>
+    <figure>
+      <div class="scroll">
+        <svg class="dg" viewBox="0 0 1100 800" role="img" aria-label="Decision flow for one message. Messages starting with a slash are commands. Otherwise the bot works out the date, then checks for done, did or a tick to log a habit, skipping it if already logged that day. Otherwise it looks for an amount to log an expense, picks a category from a hashtag or keywords, saves it and checks the monthly budget. Anything else gets a hint. Every path ends in a threaded reply.">
+          <defs>
+            <marker id="fh" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="mk" d="M0,0 L10,5 L0,10 z"/></marker>
+          </defs>
+
+          <!-- Start -->
+          <rect class="end" x="460" y="20" width="180" height="44" rx="22"/>
+          <text class="ttl" x="550" y="47" text-anchor="middle">Message arrives</text>
+          <line class="edge" x1="550" y1="64" x2="550" y2="97" marker-end="url(#fh)"/>
+
+          <!-- Q1 commands -->
+          <rect class="q" x="460" y="100" width="180" height="50" rx="10"/>
+          <text class="ttl" x="550" y="130" text-anchor="middle">Starts with “/”?</text>
+          <line class="edge" x1="460" y1="125" x2="363" y2="125" marker-end="url(#fh)"/>
+          <text class="lbl" x="412" y="116" text-anchor="middle">yes</text>
+
+          <rect class="box" x="40" y="95" width="320" height="115" rx="10"/>
+          <text class="ttl" x="60" y="122">Run the command</text>
+          <text class="sub" x="60" y="146">/today  /week  /month  /habits</text>
+          <text class="sub" x="60" y="166">/budget 20000  /undo  /ping  /help</text>
+          <text class="sub" x="60" y="186">anything else → “I don't know that one”</text>
+
+          <line class="edge" x1="550" y1="150" x2="550" y2="187" marker-end="url(#fh)"/>
+          <text class="lbl" x="560" y="173">no</text>
+
+          <!-- Date -->
+          <rect class="box" x="430" y="190" width="240" height="56" rx="10"/>
+          <text class="ttl" x="550" y="214" text-anchor="middle">Pick the day</text>
+          <text class="sub" x="550" y="234" text-anchor="middle">today, or yesterday if it ends “yesterday”</text>
+          <line class="edge" x1="550" y1="246" x2="550" y2="277" marker-end="url(#fh)"/>
+
+          <!-- Q2 habit -->
+          <rect class="q" x="450" y="280" width="200" height="50" rx="10"/>
+          <text class="ttl" x="550" y="310" text-anchor="middle">Starts with done / did / ✅?</text>
+          <line class="edge" x1="650" y1="305" x2="697" y2="305" marker-end="url(#fh)"/>
+          <text class="lbl" x="673" y="296" text-anchor="middle">yes</text>
+
+          <rect class="q" x="700" y="280" width="200" height="50" rx="10"/>
+          <text class="ttl" x="800" y="310" text-anchor="middle">Already logged that day?</text>
+          <line class="edge" x1="900" y1="305" x2="927" y2="305" marker-end="url(#fh)"/>
+          <text class="lbl" x="913" y="296" text-anchor="middle">yes</text>
+          <rect class="box" x="930" y="280" width="150" height="50" rx="10"/>
+          <text class="ttl" x="1005" y="302" text-anchor="middle">Skip it</text>
+          <text class="sub" x="1005" y="320" text-anchor="middle">“won't count twice”</text>
+
+          <line class="edge" x1="800" y1="330" x2="800" y2="387" marker-end="url(#fh)"/>
+          <text class="lbl" x="810" y="362">no</text>
+          <rect class="box" x="700" y="390" width="200" height="50" rx="10"/>
+          <text class="ttl" x="800" y="414" text-anchor="middle">Save the habit</text>
+          <text class="sub" x="800" y="431" text-anchor="middle">count the streak</text>
+          <line class="edge" x1="800" y1="440" x2="800" y2="477" marker-end="url(#fh)"/>
+          <rect class="box" x="690" y="480" width="220" height="56" rx="10"/>
+          <text class="say" x="800" y="503" text-anchor="middle">“Nice work! "gym" logged ✅</text>
+          <text class="say" x="800" y="522" text-anchor="middle">Streak: 5 days in a row 🔥”</text>
+
+          <line class="edge" x1="550" y1="330" x2="550" y2="367" marker-end="url(#fh)"/>
+          <text class="lbl" x="560" y="353">no</text>
+
+          <!-- Q3 amount -->
+          <rect class="q" x="460" y="370" width="180" height="50" rx="10"/>
+          <text class="ttl" x="550" y="400" text-anchor="middle">Has an amount?</text>
+          <line class="edge" x1="460" y1="395" x2="403" y2="395" marker-end="url(#fh)"/>
+          <text class="lbl" x="431" y="386" text-anchor="middle">no</text>
+          <rect class="box" x="180" y="368" width="220" height="56" rx="10"/>
+          <text class="ttl" x="290" y="391" text-anchor="middle">Can't read it</text>
+          <text class="sub" x="290" y="410" text-anchor="middle">reply with an example + /help</text>
+
+          <line class="edge" x1="550" y1="420" x2="550" y2="457" marker-end="url(#fh)"/>
+          <text class="lbl" x="560" y="443">yes</text>
+
+          <!-- Expense chain -->
+          <rect class="box" x="400" y="460" width="300" height="56" rx="10"/>
+          <text class="ttl" x="550" y="483" text-anchor="middle">Read amount and note</text>
+          <text class="sub" x="550" y="502" text-anchor="middle">250 lunch · lunch 250 · 1.5k · ₹/Rs · 1,200</text>
+          <line class="edge" x1="550" y1="516" x2="550" y2="542" marker-end="url(#fh)"/>
+          <rect class="box" x="400" y="545" width="300" height="56" rx="10"/>
+          <text class="ttl" x="550" y="568" text-anchor="middle">Choose the category</text>
+          <text class="sub" x="550" y="587" text-anchor="middle">#tag wins, else keywords (uber → transport)</text>
+          <line class="edge" x1="550" y1="601" x2="550" y2="627" marker-end="url(#fh)"/>
+          <rect class="box" x="400" y="630" width="300" height="56" rx="10"/>
+          <text class="ttl" x="550" y="653" text-anchor="middle">Save, then add up</text>
+          <text class="sub" x="550" y="672" text-anchor="middle">today · this month · budget at 80% / 100%</text>
+
+          <!-- Bus to reply -->
+          <line class="bus" x1="120" y1="210" x2="120" y2="725"/>
+          <line class="bus" x1="290" y1="424" x2="290" y2="725"/>
+          <line class="bus" x1="550" y1="686" x2="550" y2="725"/>
+          <line class="bus" x1="800" y1="536" x2="800" y2="725"/>
+          <line class="bus" x1="1005" y1="330" x2="1005" y2="725"/>
+          <line class="bus" x1="120" y1="725" x2="1005" y2="725"/>
+          <line class="edge" x1="550" y1="725" x2="550" y2="737" marker-end="url(#fh)"/>
+          <rect class="end" x="420" y="740" width="260" height="44" rx="22"/>
+          <text class="ttl" x="550" y="767" text-anchor="middle">Reply, threaded to your message</text>
+        </svg>
+      </div>
+      <figcaption>The checks run top to bottom and the first match wins, so “done gym” is never read as an expense and “/budget 20000” is never read as one either. Every path ends in a reply, including the ones that log nothing.</figcaption>
+    </figure>
+  </section>
+
+  <section>
+    <span class="eyebrow">Messages the bot starts</span>
+    <h2>The evening nudge and the Sunday recap</h2>
+    <figure>
+      <div class="scroll">
+        <svg class="dg" viewBox="0 0 1100 290" role="img" aria-label="Every day after 9 pm the bot checks for habits from the last 30 days not done today; if there are any it sends a nudge naming them with streaks, otherwise it stays quiet. On Sunday after 8 pm it sends a week-in-review text and two charts.">
+          <defs>
+            <marker id="sh" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="mk" d="M0,0 L10,5 L0,10 z"/></marker>
+          </defs>
+
+          <rect class="end" x="20" y="45" width="170" height="44" rx="22"/>
+          <text class="ttl" x="105" y="72" text-anchor="middle">Every day, 9 pm</text>
+          <line class="edge" x1="190" y1="67" x2="247" y2="67" marker-end="url(#sh)"/>
+          <rect class="q" x="250" y="40" width="290" height="54" rx="10"/>
+          <text class="ttl" x="395" y="63" text-anchor="middle">Any recent habit not done today?</text>
+          <text class="sub" x="395" y="81" text-anchor="middle">recent = seen in the last 30 days</text>
+          <line class="edge" x1="540" y1="67" x2="597" y2="67" marker-end="url(#sh)"/>
+          <text class="lbl" x="568" y="58" text-anchor="middle">yes</text>
+          <rect class="box" x="600" y="40" width="330" height="54" rx="10"/>
+          <text class="say" x="765" y="63" text-anchor="middle">“Evening check-in! Still open today:</text>
+          <text class="say" x="765" y="81" text-anchor="middle">gym (5-day streak), reading”</text>
+          <line class="edge" x1="395" y1="94" x2="395" y2="127" marker-end="url(#sh)"/>
+          <text class="lbl" x="405" y="114">no</text>
+          <rect class="box" x="320" y="130" width="150" height="40" rx="10"/>
+          <text class="ttl" x="395" y="155" text-anchor="middle">Stay quiet</text>
+
+          <rect class="end" x="20" y="215" width="170" height="44" rx="22"/>
+          <text class="ttl" x="105" y="242" text-anchor="middle">Sunday, 8 pm</text>
+          <line class="edge" x1="190" y1="237" x2="247" y2="237" marker-end="url(#sh)"/>
+          <rect class="box" x="250" y="205" width="360" height="64" rx="10"/>
+          <text class="ttl" x="430" y="228" text-anchor="middle">Week in review</text>
+          <text class="sub" x="430" y="247" text-anchor="middle">total · per day · vs last week · by category</text>
+          <text class="sub" x="430" y="262" text-anchor="middle">habits: days done out of 7</text>
+          <line class="edge" x1="610" y1="237" x2="667" y2="237" marker-end="url(#sh)"/>
+          <rect class="box" x="670" y="210" width="190" height="54" rx="10"/>
+          <text class="ttl" x="765" y="233" text-anchor="middle">Chart</text>
+          <text class="sub" x="765" y="251" text-anchor="middle">spending by day</text>
+          <line class="edge" x1="860" y1="237" x2="887" y2="237" marker-end="url(#sh)"/>
+          <rect class="box" x="890" y="210" width="190" height="54" rx="10"/>
+          <text class="ttl" x="985" y="233" text-anchor="middle">Chart</text>
+          <text class="sub" x="985" y="251" text-anchor="middle">habits, last 14 days</text>
+        </svg>
+      </div>
+      <figcaption>Both go out once per day at most, even if the scheduled time is missed: whichever run comes first after the due time sends them.</figcaption>
+    </figure>
+  </section>
+
+  <section>
+    <span class="eyebrow">Commands</span>
+    <h2>What each command gives back</h2>
+    <div class="tbl">
+      <table>
+        <thead><tr><th>You send</th><th>The bot replies with</th></tr></thead>
+        <tbody>
+          <tr><td><code>250 lunch</code>, <code>spent 1.5k on rent #bills</code></td><td>The saved amount and category, today's total, this month's total, and a budget warning at 80% and 100%</td></tr>
+          <tr><td><code>chai 20 yesterday</code></td><td>The same, logged against yesterday</td></tr>
+          <tr><td><code>done gym</code>, <code>done reading 30 min</code></td><td>Confirmation and the current streak once it reaches 2 days</td></tr>
+          <tr><td><code>/today</code></td><td>Today's spending line by line, habits done and habits still open</td></tr>
+          <tr><td><code>/week</code></td><td>Last 7 days: total, daily average, change from the week before, by category, habits out of 7</td></tr>
+          <tr><td><code>/month</code></td><td>This month's total, by category, and budget used</td></tr>
+          <tr><td><code>/habits</code></td><td>Each habit's streak and days done this week</td></tr>
+          <tr><td><code>/budget 20000</code></td><td>Sets the monthly budget; on its own it shows the current one</td></tr>
+          <tr><td><code>/undo</code></td><td>Removes the last thing logged, expense or habit, and says what it removed</td></tr>
+          <tr><td><code>/ping</code>, <code>/help</code></td><td>A health check, or the full list of what the bot understands</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- ================= PART 2: ARCHITECTURE ================= -->
+  <div class="part-head" id="architecture">
+    <span class="eyebrow">Part 2 · Architecture</span>
+    <h2>How the system carries it out</h2>
+    <p class="prose">The same message, now followed through Telegram, Cloudflare and GitHub.</p>
+  </div>
+
+  <!-- 1. Whole system -->
+  <section>
+    <span class="eyebrow">The whole system</span>
+    <h2>How one message moves through it</h2>
+    <div class="legend" aria-hidden="true">
+      <span class="k-fast"><i></i>fast path (webhook)</span>
+      <span class="k-backup"><i></i>backup schedule</span>
+      <span class="k-plain"><i></i>data and replies</span>
+      <span class="k-plain k-dash"><i></i>instant reaction</span>
+    </div>
+    <figure>
+      <div class="scroll">
+        <svg class="dg" viewBox="0 0 1100 600" role="img" aria-label="Telegram pushes each message to a Cloudflare relay, which stores it in a Durable Object inbox, reacts with eyes and starts the GitHub Actions bot workflow. The workflow pre-checks, processes in R, pushes data to the repo, replies on Telegram, then confirms the messages so the inbox forgets them. A schedule starts the same workflow as a backup.">
+          <defs>
+            <marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="mk" d="M0,0 L10,5 L0,10 z"/></marker>
+            <marker id="ah-fast" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="mk-fast" d="M0,0 L10,5 L0,10 z"/></marker>
+            <marker id="ah-backup" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="mk-backup" d="M0,0 L10,5 L0,10 z"/></marker>
+          </defs>
+
+          <!-- Row 1 -->
+          <rect class="box" x="20" y="50" width="140" height="70" rx="10"/>
+          <text class="ttl" x="90" y="80" text-anchor="middle">You</text>
+          <text class="sub" x="90" y="100" text-anchor="middle">Telegram app</text>
+
+          <rect class="box" x="220" y="50" width="170" height="70" rx="10"/>
+          <text class="ttl" x="305" y="80" text-anchor="middle">Telegram</text>
+          <text class="sub" x="305" y="100" text-anchor="middle">Bot API servers</text>
+
+          <rect class="box-key" x="470" y="50" width="200" height="70" rx="10"/>
+          <text class="ttl" x="570" y="80" text-anchor="middle">Relay</text>
+          <text class="sub" x="570" y="100" text-anchor="middle">Cloudflare Worker</text>
+
+          <rect class="box" x="890" y="50" width="170" height="70" rx="10"/>
+          <text class="ttl" x="975" y="80" text-anchor="middle">GitHub API</text>
+          <text class="sub" x="975" y="100" text-anchor="middle">workflow_dispatch</text>
+
+          <line class="edge" x1="160" y1="85" x2="217" y2="85" marker-end="url(#ah)"/>
+          <text class="lbl" x="189" y="76" text-anchor="middle">send</text>
+
+          <line class="edge fast" x1="390" y1="72" x2="467" y2="72" marker-end="url(#ah-fast)"/>
+          <text class="lbl-fast" x="429" y="63" text-anchor="middle">webhook</text>
+          <line class="edge dash" x1="470" y1="100" x2="393" y2="100" marker-end="url(#ah)"/>
+          <text class="lbl" x="431" y="116" text-anchor="middle">👀 react</text>
+
+          <line class="edge fast" x1="670" y1="85" x2="887" y2="85" marker-end="url(#ah-fast)"/>
+          <text class="lbl-fast" x="779" y="76" text-anchor="middle">start a run</text>
+          <text class="lbl" x="779" y="103" text-anchor="middle">at most 1 per 10 s</text>
+
+          <!-- Inbox -->
+          <line class="edge" x1="570" y1="120" x2="570" y2="187" marker-end="url(#ah)"/>
+          <text class="lbl" x="580" y="150">store (your chat only;</text>
+          <text class="lbl" x="580" y="166">strangers dropped)</text>
+          <rect class="box" x="470" y="190" width="200" height="60" rx="10"/>
+          <text class="ttl" x="570" y="216" text-anchor="middle">Inbox</text>
+          <text class="sub" x="570" y="236" text-anchor="middle">Durable Object · SQLite</text>
+
+          <!-- Schedules -->
+          <rect class="box" x="40" y="180" width="190" height="80" rx="10"/>
+          <text class="ttl" x="135" y="206" text-anchor="middle">Schedules</text>
+          <text class="sub" x="135" y="226" text-anchor="middle">backup every 2 h</text>
+          <text class="sub" x="135" y="243" text-anchor="middle">21:02 nudge · Sun recap</text>
+          <line class="edge backup" x1="135" y1="260" x2="135" y2="327" marker-end="url(#ah-backup)"/>
+          <text class="lbl-backup" x="145" y="298">cron</text>
+
+          <!-- Dispatch -->
+          <line class="edge fast" x1="1020" y1="120" x2="1020" y2="327" marker-end="url(#ah-fast)"/>
+          <text class="lbl-fast" x="1010" y="230" text-anchor="end">runs bot.yml</text>
+
+          <!-- Actions job -->
+          <rect class="frame" x="30" y="330" width="1050" height="135" rx="12"/>
+          <text class="cap" x="46" y="352">GITHUB ACTIONS · bot.yml · ONE RUN AT A TIME</text>
+
+          <rect class="box" x="50" y="372" width="170" height="70" rx="10"/>
+          <text class="ttl" x="135" y="402" text-anchor="middle">1 · Pre-check</text>
+          <text class="sub" x="135" y="422" text-anchor="middle">anything to do?</text>
+
+          <rect class="box" x="260" y="372" width="170" height="70" rx="10"/>
+          <text class="ttl" x="345" y="402" text-anchor="middle">2 · Process (R)</text>
+          <text class="sub" x="345" y="422" text-anchor="middle">parse · write CSV</text>
+
+          <rect class="box" x="470" y="372" width="170" height="70" rx="10"/>
+          <text class="ttl" x="555" y="402" text-anchor="middle">3 · Save</text>
+          <text class="sub" x="555" y="422" text-anchor="middle">git push data/</text>
+
+          <rect class="box" x="680" y="372" width="170" height="70" rx="10"/>
+          <text class="ttl" x="765" y="402" text-anchor="middle">4 · Deliver</text>
+          <text class="sub" x="765" y="422" text-anchor="middle">reply · 👍</text>
+
+          <rect class="box" x="890" y="372" width="170" height="70" rx="10"/>
+          <text class="ttl" x="975" y="402" text-anchor="middle">5 · Confirm</text>
+          <text class="sub" x="975" y="422" text-anchor="middle">inbox forgets</text>
+
+          <line class="edge" x1="220" y1="407" x2="257" y2="407" marker-end="url(#ah)"/>
+          <line class="edge" x1="430" y1="407" x2="467" y2="407" marker-end="url(#ah)"/>
+          <line class="edge" x1="640" y1="407" x2="677" y2="407" marker-end="url(#ah)"/>
+          <line class="edge" x1="850" y1="407" x2="887" y2="407" marker-end="url(#ah)"/>
+
+          <!-- Inbox to Process, Confirm to Inbox -->
+          <path class="edge" d="M500,250 V300 H345 V369" marker-end="url(#ah)"/>
+          <text class="lbl" x="422" y="292" text-anchor="middle">read new</text>
+          <path class="edge" d="M930,372 V300 H640 V253" marker-end="url(#ah)"/>
+          <text class="lbl" x="785" y="292" text-anchor="middle">POST /ack</text>
+
+          <!-- Outputs -->
+          <line class="edge" x1="555" y1="442" x2="555" y2="517" marker-end="url(#ah)"/>
+          <text class="lbl" x="565" y="487">commit</text>
+          <rect class="box" x="470" y="520" width="170" height="60" rx="10"/>
+          <text class="ttl" x="555" y="546" text-anchor="middle">Repo · data/</text>
+          <text class="sub" x="555" y="566" text-anchor="middle">expenses · habits · state</text>
+
+          <line class="edge" x1="765" y1="442" x2="765" y2="517" marker-end="url(#ah)"/>
+          <text class="lbl" x="775" y="487">sendMessage</text>
+          <rect class="box" x="680" y="520" width="170" height="60" rx="10"/>
+          <text class="ttl" x="765" y="546" text-anchor="middle">Telegram</text>
+          <text class="sub" x="765" y="566" text-anchor="middle">reply threaded to you</text>
+        </svg>
+      </div>
+      <figcaption>The relay holds every message until step 5. Replies go out only after step 3 has pushed the data, so you never get "Noted!" for something that wasn't saved. If any step fails, the message stays in the inbox and the next run handles it.</figcaption>
+    </figure>
+  </section>
+
+  <!-- 2. Before vs after -->
+  <section>
+    <span class="eyebrow">What changed from v1</span>
+    <h2>Polling became a push</h2>
+    <figure>
+      <div class="scroll">
+        <svg class="dg" viewBox="0 0 1100 250" role="img" aria-label="In v1, GitHub Actions asked Telegram for new messages every 30 minutes, so replies took 30 to 60 minutes. In v2, Telegram pushes each message to the relay, which starts GitHub Actions on demand, so replies take 1 to 2 minutes.">
+          <defs>
+            <marker id="bh" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="mk" d="M0,0 L10,5 L0,10 z"/></marker>
+            <marker id="bh-fast" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="mk-fast" d="M0,0 L10,5 L0,10 z"/></marker>
+            <marker id="bh-backup" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="mk-backup" d="M0,0 L10,5 L0,10 z"/></marker>
+          </defs>
+
+          <text class="cap" x="20" y="64">V1 · POLL</text>
+          <rect class="box" x="120" y="35" width="120" height="56" rx="10"/>
+          <text class="ttl" x="180" y="68" text-anchor="middle">You</text>
+          <rect class="box" x="320" y="35" width="180" height="56" rx="10"/>
+          <text class="ttl" x="410" y="59" text-anchor="middle">Telegram</text>
+          <text class="sub" x="410" y="78" text-anchor="middle">holds msgs 24 h</text>
+          <rect class="box" x="760" y="35" width="200" height="56" rx="10"/>
+          <text class="ttl" x="860" y="59" text-anchor="middle">GitHub Actions</text>
+          <text class="sub" x="860" y="78" text-anchor="middle">cron every 30 min</text>
+          <line class="edge" x1="240" y1="63" x2="317" y2="63" marker-end="url(#bh)"/>
+          <line class="edge backup" x1="760" y1="63" x2="503" y2="63" marker-end="url(#bh-backup)"/>
+          <text class="lbl-backup" x="631" y="54" text-anchor="middle">"anything new?"</text>
+          <text class="lbl" x="631" y="82" text-anchor="middle">asks every 30 min</text>
+          <text class="result" x="975" y="68">30–60 min</text>
+
+          <text class="cap" x="20" y="184">V2 · PUSH</text>
+          <rect class="box" x="120" y="155" width="120" height="56" rx="10"/>
+          <text class="ttl" x="180" y="188" text-anchor="middle">You</text>
+          <rect class="box" x="320" y="155" width="180" height="56" rx="10"/>
+          <text class="ttl" x="410" y="188" text-anchor="middle">Telegram</text>
+          <rect class="box-key" x="580" y="155" width="140" height="56" rx="10"/>
+          <text class="ttl" x="650" y="179" text-anchor="middle">Relay</text>
+          <text class="sub" x="650" y="198" text-anchor="middle">+ inbox</text>
+          <rect class="box" x="790" y="155" width="170" height="56" rx="10"/>
+          <text class="ttl" x="875" y="179" text-anchor="middle">GitHub Actions</text>
+          <text class="sub" x="875" y="198" text-anchor="middle">started on demand</text>
+          <line class="edge" x1="240" y1="183" x2="317" y2="183" marker-end="url(#bh)"/>
+          <line class="edge fast" x1="500" y1="183" x2="577" y2="183" marker-end="url(#bh-fast)"/>
+          <text class="lbl-fast" x="539" y="174" text-anchor="middle">webhook</text>
+          <line class="edge fast" x1="720" y1="183" x2="787" y2="183" marker-end="url(#bh-fast)"/>
+          <text class="lbl-fast" x="754" y="174" text-anchor="middle">start</text>
+          <text class="result" x="975" y="188">1–2 min</text>
+        </svg>
+      </div>
+      <figcaption>The edge that flipped direction is the whole story. v1 pulled from Telegram on a timer; v2 is pushed to the moment you send. The old schedule still exists as a 2-hour safety net.</figcaption>
+    </figure>
+  </section>
+
+  <!-- 3. Timeline -->
+  <section>
+    <span class="eyebrow">One real message</span>
+    <h2>“done gym”, second by second</h2>
+    <figure>
+      <div class="scroll">
+        <svg class="dg" viewBox="0 0 1100 320" role="img" aria-label="Timeline of one message: sent at 0 seconds, stored and marked with eyes at 0.3 seconds, run started at 1 second, pre-check at about 15 seconds, R processing at about 75 seconds, data pushed at about 80 seconds, reply and thumbs-up at about 85 seconds, inbox cleared at about 88 seconds.">
+          <text class="ttl" x="20" y="74">You · Telegram</text>
+          <text class="ttl" x="20" y="144">Relay + inbox</text>
+          <text class="ttl" x="20" y="214">GitHub Actions</text>
+          <text class="ttl" x="20" y="284">Repo · data/</text>
+          <line class="lane" x1="150" y1="70" x2="1080" y2="70"/>
+          <line class="lane" x1="150" y1="140" x2="1080" y2="140"/>
+          <line class="lane" x1="150" y1="210" x2="1080" y2="210"/>
+          <line class="lane" x1="150" y1="280" x2="1080" y2="280"/>
+
+          <polyline class="edge fast" points="190,70 310,140 430,140 550,210 670,210 790,280 910,70 1030,140"/>
+
+          <g text-anchor="middle">
+            <text class="lbl" x="190" y="34">0 s</text>
+            <text class="lbl" x="310" y="34">0.3 s</text>
+            <text class="lbl" x="430" y="34">1 s</text>
+            <text class="lbl" x="550" y="34">~15 s</text>
+            <text class="lbl" x="670" y="34">~75 s</text>
+            <text class="lbl" x="790" y="34">~80 s</text>
+            <text class="lbl" x="910" y="34">~85 s</text>
+            <text class="lbl" x="1030" y="34">~88 s</text>
+          </g>
+
+          <circle class="dot" cx="190" cy="70" r="6"/>
+          <circle class="dot" cx="310" cy="140" r="6"/>
+          <circle class="dot" cx="430" cy="140" r="6"/>
+          <circle class="dot" cx="550" cy="210" r="6"/>
+          <circle class="dot" cx="670" cy="210" r="6"/>
+          <circle class="dot" cx="790" cy="280" r="6"/>
+          <circle class="dot" cx="910" cy="70" r="6"/>
+          <circle class="dot" cx="1030" cy="140" r="6"/>
+
+          <g text-anchor="middle">
+            <text class="sub" x="190" y="96">send</text>
+            <text class="sub" x="310" y="166">stored · 👀</text>
+            <text class="sub" x="430" y="122">starts run</text>
+            <text class="sub" x="550" y="236">pre-check: 1 new</text>
+            <text class="sub" x="670" y="192">R parses, writes</text>
+            <text class="sub" x="790" y="306">git push</text>
+            <text class="sub" x="910" y="96">reply · 👍</text>
+            <text class="sub" x="1030" y="166">inbox cleared</text>
+          </g>
+        </svg>
+      </div>
+      <figcaption>Times are approximate, from run #3 on 24 Oct (1 m 32 s end to end). Most of the wait is the runner installing R; the relay's 👀 tells you within a second that the message is safe.</figcaption>
+    </figure>
+  </section>
+
+  <!-- 4. Failure handling -->
+  <section>
+    <span class="eyebrow">Reliability</span>
+    <h2>What happens when something breaks</h2>
+    <p class="prose">Two rules carry most of the weight. A message is only confirmed after its data is pushed, and <code>state.json</code> records the last handled update id, so anything at or below it is never processed again.</p>
+    <div class="tbl">
+      <table>
+        <thead><tr><th>If this fails</th><th>What happens</th><th>How it recovers</th></tr></thead>
+        <tbody>
+          <tr><td>The relay can't start a run (token expired)</td><td>The message waits in the inbox with 👀</td><td>The 2-hour backup run picks it up</td></tr>
+          <tr><td>Telegram or the relay is unreachable at pre-check</td><td>The run goes red and GitHub emails you</td><td>The next run retries; messages keep waiting</td></tr>
+          <tr><td>The R step crashes</td><td>No commit, no replies, no confirmation</td><td>The next run processes the same messages</td></tr>
+          <tr><td>The push is rejected</td><td>Pulls, rebases and retries up to 3 times</td><td>If it still fails, nothing was replied to, so the retry is clean</td></tr>
+          <tr><td>A reply fails to send</td><td>The data is already saved</td><td>Message is confirmed; only the reply is lost</td></tr>
+          <tr><td>The same message arrives twice</td><td>Inbox dedupes by id; R skips ids at or below the watermark</td><td class="ok">Never logged twice, <code>/undo</code> never repeats</td></tr>
+          <tr><td>A stranger messages the bot</td><td>The relay drops it at the edge</td><td class="ok">Never reaches GitHub or uses minutes</td></tr>
+          <tr><td>Two runs start together</td><td>One concurrency group: one runs, the rest queue</td><td class="ok">Queued runs collapse into one</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- 5. Reports -->
+  <section>
+    <span class="eyebrow">Scheduled messages</span>
+    <h2>Nudges and recaps can't be missed</h2>
+    <p class="prose">Every run, whatever started it, checks whether a report is due and not yet sent today. The 9 pm habit nudge stays quiet when everything is done; the Sunday 8 pm recap sends a text summary and two charts drawn with ggplot2. The dates they went out are stored in <code>state.json</code>, so a late or skipped schedule only delays a report, it never loses or repeats one.</p>
+  </section>
+
+  <!-- 6. Secrets -->
+  <section>
+    <span class="eyebrow">Security</span>
+    <h2>Where each secret lives</h2>
+    <div class="tbl">
+      <table>
+        <thead><tr><th>Name</th><th>Stored in</th><th>Used for</th></tr></thead>
+        <tbody>
+          <tr><td><code>TELEGRAM_BOT_TOKEN</code></td><td>GitHub, copied to Cloudflare</td><td>Replies, reactions, registering the webhook</td></tr>
+          <tr><td><code>TELEGRAM_CHAT_ID</code></td><td>GitHub, copied to Cloudflare</td><td>Owner filter at the relay and in R</td></tr>
+          <tr><td><code>RELAY_SECRET</code></td><td>GitHub, copied to Cloudflare</td><td>Webhook header check and bot-to-relay auth</td></tr>
+          <tr><td><code>GH_DISPATCH_TOKEN</code></td><td>GitHub, copied to Cloudflare</td><td>Relay starts the bot. One repo, Actions only</td></tr>
+          <tr><td><code>CLOUDFLARE_API_TOKEN</code>, <code>ACCOUNT_ID</code></td><td>GitHub only</td><td>Deploying the relay. Workers only, own account</td></tr>
+          <tr><td><code>RELAY_URL</code> (variable)</td><td>GitHub</td><td>Switches the bot from polling to the relay</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- 7. Deploy -->
+  <section>
+    <span class="eyebrow">Deploying the relay</span>
+    <h2>One button in the Actions tab</h2>
+    <ol class="steps">
+      <li>Check all six secrets are present and the relay secret is strong.</li>
+      <li>Deploy the Worker and its Durable Object inbox with Wrangler.</li>
+      <li>Upload the Worker's four secrets.</li>
+      <li>Point the Telegram bot at the relay (<code>setWebhook</code> with the secret header).</li>
+      <li>Fire a test run once <code>RELAY_URL</code> is set.</li>
+      <li>Print the relay URL in the run summary.</li>
+    </ol>
+  </section>
+
+  <!-- 8. Numbers -->
+  <section>
+    <span class="eyebrow">Running cost</span>
+    <h2>Free, with headroom</h2>
+    <div class="facts">
+      <div class="fact"><b>₹0 / month</b><span>Telegram, Cloudflare free plan, GitHub Free</span></div>
+      <div class="fact"><b>~750–1,150</b><span>of 2,000 free Actions minutes a month</span></div>
+      <div class="fact"><b>~8 s</b><span>an idle run, which skips installing R</span></div>
+      <div class="fact"><b>63 tests</b><span>51 for the R bot, 12 for the relay, run on every code change</span></div>
+    </div>
+  </section>
+</div>
+
+</body>
+</html>
